@@ -1,3 +1,31 @@
+/**
+ * Hono 接入契约（后端由 Codex 实现，前端只消费）。
+ *
+ * 启用方式：设置 `AFTERSALES_API_BASE_URL`（服务端直连地址）与可选的
+ * `AFTERSALES_PUBLIC_API_BASE_URL`（浏览器可访问的导出地址）；未设置时页面使用受控样例数据。
+ *
+ * 请求头：`x-company-user-id` / `x-company-user-name`（URL 编码）/ `x-company-role`（admin | viewer），
+ * 由公司网关注入的身份透传，Hono 需再次校验，不接受前端凭据。
+ *
+ * 端点 → 响应类型（见 ../contracts.ts）：
+ *   GET   /readyz                                   → ReadinessData
+ *   GET   /api/v1/overview?period&datasetVersion    → ApiSuccess<OverviewData>
+ *   GET   /api/v1/issues?<IssueFilters 蛇形参数>     → ApiSuccess<IssueListData>（服务端分页，offset/limit）
+ *   GET   /api/v1/issues/:id                        → ApiSuccess<IssueDetail>
+ *   GET   /api/v1/products/weekly?week&datasetVersion → ApiSuccess<ProductWeeklyData>
+ *   GET   /api/v1/warehouses?week&datasetVersion    → ApiSuccess<WarehouseData>
+ *   GET   /api/v1/rules                             → ApiSuccess<RulesData>
+ *   PATCH /api/v1/rules/:ruleId  body RuleUpdateInput → ApiSuccess<RulesData>（仅 admin，返回更新后的全量规则）
+ *   GET   /api/v1/data-status                       → ApiSuccess<DataStatusData>
+ *   GET   /api/v1/sync/runs?source&status&offset&limit → ApiSuccess<ListData<SyncRunSummary>>
+ *   GET   /api/v1/sync/runs/:runId                  → ApiSuccess<SyncRunDetail>
+ *   GET   /api/v1/export?<同 issues 参数>            → CSV 下载（浏览器直接打开）
+ *
+ * 成功响应统一为 `{ data, meta: ApiMeta }`，meta 含 requestId / datasetVersion / generatedAt / dataState / notice；
+ * 错误响应为 `{ error: { code, message, details? } }`，code 取 ApiErrorCode 之一，
+ * HTTP 状态码与之对应（401/403/404/422/409 DATASET_UNPUBLISHED/503/500）。
+ * 每个响应建议携带 `x-request-id`，前端错误面板会展示它。
+ */
 import { ApiError, type ApiClient, type ApiClientContext, type ApiErrorCode } from "../client"
 import type { ApiErrorBody, ApiSuccess, IssueFilters, ReadinessData, SyncRunFilters } from "../contracts"
 
