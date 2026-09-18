@@ -26,6 +26,10 @@ const nextConfig = {
     "/*": ["./node_modules/@swc/helpers/**/*"],
   },
   poweredByHeader: false,
+  async redirects() {
+    // 应用挂载在 /aftersales；直接访问站点根路径时带到入口，避免 404。
+    return [{ source: "/", destination: "/aftersales", permanent: false, basePath: false }]
+  },
   async headers() {
     return [
       {

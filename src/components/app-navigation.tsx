@@ -1,14 +1,15 @@
 "use client"
 
-import { Boxes, ClipboardList, LayoutDashboard, PackageSearch, Settings } from "lucide-react"
+import { Boxes, ClipboardList, DatabaseZap, LayoutDashboard, PackageSearch, Settings } from "lucide-react"
 import Link, { useLinkStatus } from "next/link"
 import { usePathname } from "next/navigation"
 
 const navigation = [
   { href: "/", label: "经营总览", icon: LayoutDashboard },
-  { href: "/detail", label: "问题明细", icon: ClipboardList },
-  { href: "/products", label: "产品分析", icon: PackageSearch },
+  { href: "/issues", label: "问题工作台", icon: ClipboardList },
+  { href: "/products", label: "产品周报", icon: PackageSearch },
   { href: "/warehouses", label: "仓库分析", icon: Boxes },
+  { href: "/data-quality", label: "同步与数据质量", icon: DatabaseZap },
   { href: "/settings", label: "规则设置", icon: Settings },
 ] as const
 
@@ -21,7 +22,7 @@ export function AppNavigation() {
   const pathname = usePathname()
 
   return (
-    <nav aria-label="售后看板导航">
+    <nav aria-label="售后经营平台导航">
       {navigation.map((item) => {
         const Icon = item.icon
         const active = item.href === "/" ? pathname === item.href : pathname.startsWith(item.href)

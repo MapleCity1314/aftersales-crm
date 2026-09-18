@@ -1,116 +1,102 @@
-import { Activity, BadgePercent, ClipboardCheck, PackageCheck, RefreshCw } from "lucide-react"
+import { Activity, BadgePercent, ClipboardCheck, ClipboardList, HelpCircle, PackageCheck, ShoppingCart, Tags } from "lucide-react"
 import Link from "next/link"
 import { Suspense } from "react"
 
-import { DataError } from "@/src/components/data-error"
-import { ExportLink } from "@/src/components/export-link"
-import { formatCount, formatDateTime, formatDelta, formatPercent } from "@/src/components/format"
-import { IssueWorkbench } from "@/src/components/issue-workbench"
-import { MetricCard } from "@/src/components/metric-card"
-import { PeriodSwitcher } from "@/src/components/period-switcher"
-import { ProductOrderNotice } from "@/src/components/product-order-notice"
+import { buildHref, issuesHref, type SearchParams } from "@/src/api/query"
+import { getApi } from "@/src/api/server"
+import { DatasetStrip } from "@/src/components/dataset-strip"
+import { ExportButton } from "@/src/components/export-button"
+import { KpiCard } from "@/src/components/metric-card"
+import { CategoryBreakdown, ProductWatchlist, TrendTable, WarehouseRiskList } from "@/src/components/overview-panels"
 import { RouteLoading } from "@/src/components/route-loading"
-import { issueFilterEntries, issueFiltersFromSearch } from "@/src/modules/analytics/filters"
-import { loadDashboard } from "@/src/modules/analytics/service"
-import { sourceFreshness } from "@/src/modules/analytics/freshness"
-import { reportBatch } from "@/src/modules/analytics/repository"
-import { isDevFixtureMode } from "@/src/modules/analytics/dev-mode"
-import { shanghaiToday } from "@/src/modules/analytics/date-windows"
-import type { PeriodMode } from "@/src/modules/analytics/types"
+import { DataNotice, ErrorState } from "@/src/components/state-panels"
 
-type Props = { searchParams: Promise<{
-  batch?: string
-  period?: string
-  q?: string
-  p1?: string
-  p2?: string
-  p3?: string
-  merchant_code?: string
-  product_id?: string
-  doudian_product_id?: string
-  alert?: string
-  scope?: string
-}> }
+type Props = { searchParams: Promise<SearchParams> }
 
-export default function DashboardPage(props: Props) {
-  return <Suspense fallback={<RouteLoading />}><DashboardContent {...props} /></Suspense>
+export default function OverviewPage(props: Props) {
+  return <Suspense fallback={<RouteLoading />}><OverviewContent {...props} /></Suspense>
 }
 
-async function DashboardContent({ searchParams }: Props) {
+async function OverviewContent({ searchParams }: Props) {
   const query = await searchParams
-  const mode: PeriodMode = query.period === "progress" ? "progress" : "closed"
-  let result
-  let error: unknown
+  const mode = query.period === "progress" ? "progress" : "closed"
+  const selfHref = buildHref("/", mode === "progress" ? [["period", "progress"]] : [])
+
+  let result: Awaited<ReturnType<Awaited<ReturnType<typeof getApi>>["overview"]>> | null = null
+  let error: unknown = null
+  let api: Awaited<ReturnType<typeof getApi>> | null = null
   try {
-    result = await loadDashboard(mode, shanghaiToday(), isDevFixtureMode() ? undefined : await reportBatch(query.batch))
+    api = await getApi()
+    result = await api.overview({ period: mode })
   } catch (caught) {
     error = caught
   }
-  const freshness = result ? sourceFreshness(result.source.syncedAt) : null
-  const batchEntries: Array<[string, string]> = result?.source.batchId ? [["batch", result.source.batchId]] : []
 
   return (
     <>
       <div className="page-heading">
-        <div><span className="eyebrow">OVERVIEW + WORKBENCH</span><h2>经营总览与售后工作台</h2><p>先掌握整体，再进入全量大表查数、对账和导出。</p></div>
-        <div className="page-heading-actions"><PeriodSwitcher entries={batchEntries} mode={mode} /><ExportLink entries={[...batchEntries, ...issueFilterEntries(issueFiltersFromSearch(query))]} mode={mode} prominent view="complete">导出完整经营分析</ExportLink></div>
+        <div>
+          <span className="eyebrow">OVERVIEW</span>
+          <h2>经营总览</h2>
+          <p>先看数据窗口、来源和发布版本，再看结论。每个指标都能进入带筛选条件的问题工作台。</p>
+        </div>
+        <div className="page-heading-actions">
+          <div className="segmented" role="group" aria-label="周期切换">
+            <Link className={mode === "closed" ? "selected" : undefined} href="/">完整周</Link>
+            <Link className={mode === "progress" ? "selected" : undefined} href="/?period=progress">本周进度</Link>
+          </div>
+          {api && result ? <ExportButton api={api} params={{ view: "overview", period: mode, datasetVersion: result.meta.datasetVersion ?? "" }}>导出经营分析</ExportButton> : null}
+        </div>
       </div>
-      {result ? (
+
+      {error || !result ? (
+        <ErrorState error={error} retryHref={selfHref} context="经营总览" />
+      ) : (
         <>
-          <section className={freshness?.state === "fresh" ? "source-strip" : "source-strip stale"}>
-            <span><RefreshCw aria-hidden="true" size={15} /> {result.source.sourceType === "fixture" ? "本地验收数据" : freshness?.state === "fresh" ? "数据正常" : freshness?.state === "stale" ? `数据已滞后 ${Math.floor(freshness.ageHours || 0)} 小时` : "同步状态待确认"} · {formatDateTime(result.source.syncedAt)}</span>
-            <span>分析周期 {result.source.currentPeriod}</span>
-            <span>{mode === "progress" ? `已结束 ${result.source.completedDays} 个自然日` : "近 5 个完整周"}</span>
-            {mode === "progress" && result.source.orderThrough ? <span>订单截至 {result.source.orderThrough}</span> : null}
-            <span>售后事实 {formatCount(result.source.apiRows)} 行</span>
-            {result.source.coverageStart && result.source.coverageEnd ? <span>新工单覆盖 {result.source.coverageStart.slice(0, 10)} 至 {result.source.coverageEnd.slice(0, 10)}</span> : null}
-            {result.source.reconciliationStatus === "pending" ? <span>交接对账待确认</span> : null}
+          <DatasetStrip
+            meta={result.meta}
+            dataset={result.data.dataset}
+            sources={result.data.sources}
+            windowLabel={mode === "progress" ? `本周进度 ${result.data.period.current.start} 起，已结束 ${result.data.period.completedDays} 个自然日` : `分析周期 ${result.data.period.current.label}，对比 ${result.data.period.previous.label}`}
+            extra={result.data.period.orderThrough ? <span>订单水位至 {result.data.period.orderThrough}</span> : null}
+          />
+          <DataNotice meta={result.meta} publishedAt={result.data.dataset.publishedAt} lagReason={result.data.kpis.orders.reason} />
+
+          <section className="metric-grid" aria-label="核心指标">
+            <KpiCard icon={ClipboardList} label="全量售后问题" metric={result.data.kpis.allIssues} href={issuesHref({ week: result.data.period.current.start })} note={`待归类 ${result.data.kpis.unclassifiedIssues.value ?? "—"} · 可剔除 ${result.data.kpis.excludedIssues.value ?? "—"}`} />
+            <KpiCard icon={ClipboardCheck} label="经营异常问题" metric={result.data.kpis.operatingIssues} href={issuesHref({ week: result.data.period.current.start, status: "included" })} tone={(result.data.kpis.operatingIssues.delta ?? 0) > 0 ? "warning" : "good"} />
+            <KpiCard icon={ShoppingCart} label="销售订单" metric={result.data.kpis.orders} higherIsWorse={false} note="order_facts 全店口径" />
+            <KpiCard icon={PackageCheck} label="产品销量" metric={result.data.kpis.sales} higherIsWorse={false} />
+            <KpiCard icon={BadgePercent} label="经营异常售后率" metric={result.data.kpis.operatingRate} kind="percent" tone={(result.data.kpis.operatingRate.value ?? 0) >= 2 ? "critical" : undefined} note="经营异常问题 ÷ 销售订单" />
+            <KpiCard icon={Activity} label="售后率周环比" metric={result.data.kpis.rateWow} kind="percent" tone={(result.data.kpis.rateWow.value ?? 0) > 0 ? "warning" : "good"} />
+            <KpiCard icon={HelpCircle} label="待归类问题" metric={result.data.kpis.unclassifiedIssues} href={issuesHref({ week: result.data.period.current.start, status: "unclassified" })} tone={(result.data.kpis.unclassifiedIssues.value ?? 0) > 0 ? "warning" : "good"} note="未归入五大分类，不静默并入" />
+            <KpiCard icon={Tags} label="可剔除问题" metric={result.data.kpis.excludedIssues} href={issuesHref({ week: result.data.period.current.start, status: "excluded" })} higherIsWorse={false} note="按规则版本剔除" />
           </section>
-          <ProductOrderNotice source={result.source} />
-          <section className="metric-grid">
-            <MetricCard icon={ClipboardCheck} label="全量售后问题" value={formatCount(result.kpis.latestAllIssues)} note={`其中 ${formatCount(result.kpis.unclassifiedIssues)} 个问题待分类`} />
-            <MetricCard icon={ClipboardCheck} label="经营异常问题" value={formatCount(result.kpis.latestIssues)} note={`涉及 ${formatCount(result.kpis.rowCount)} 个产品问题组合`} tone={result.kpis.latestIssues > 0 ? "warning" : "good"} />
-            <MetricCard icon={PackageCheck} label="产品销量" value={formatCount(result.kpis.currentSales)} note={`销售订单 ${formatCount(result.kpis.currentOrders)} 单`} />
-            <MetricCard icon={BadgePercent} label="经营异常售后率" value={formatPercent(result.kpis.latestRate)} note="经营异常问题数 ÷ 销售订单数" tone={(result.kpis.latestRate || 0) >= 2 ? "critical" : "neutral"} />
-            <MetricCard icon={Activity} label="售后率周环比" value={formatDelta(result.kpis.latestWow)} note={`${formatCount(result.kpis.deteriorated)} 项售后率正在上升`} tone={(result.kpis.latestWow || 0) > 0 ? "warning" : "good"} />
-          </section>
-          <aside className="usage-guide" aria-label="今天怎么用">
-            <strong>今天怎么用</strong>
-            <span>① 看全量问题、经营异常和产品销量</span><span>② 按产品→链接→问题逐层定位</span><span>③ 导出全部结果用于对账和跟进</span>
-          </aside>
-          <article className="panel weekly-overview">
-            <div className="panel-heading"><div><span className="eyebrow">FIVE-WEEK TREND</span><h3>近 5 周经营售后趋势</h3></div><Link href={`/detail?period=${mode}&batch=${result?.source.batchId || ""}`}>进入问题分析</Link></div>
-            <div className="table-scroll"><table><thead><tr><th>周期</th><th>经营异常问题</th><th>产品销量</th><th>销售订单</th><th>售后率</th><th>周环比</th></tr></thead><tbody>{result.weeklyTotals.map((week, index) => <tr key={result.weeks[index]}><td><strong>{result.weeks[index]}</strong></td><td>{formatCount(week.issues)}</td><td>{formatCount(week.sales)}</td><td>{formatCount(week.orders)}</td><td>{formatPercent(week.rate)}</td><td className={(week.wow || 0) > 0 ? "number-up" : (week.wow || 0) < 0 ? "number-down" : ""}>{formatDelta(week.wow)}</td></tr>)}</tbody></table></div>
+
+          <article className="panel" style={{ marginTop: 14 }}>
+            <div className="panel-heading">
+              <div><span className="eyebrow">FIVE-WEEK TREND</span><h3>最近五个完整周</h3><p>周环比为售后率百分点差；分母缺失时显示 “—” 并注明原因。</p></div>
+              <Link href={issuesHref({})}>进入问题工作台</Link>
+            </div>
+            <TrendTable trend={result.data.trend} />
           </article>
-          <IssueWorkbench action="/" data={result} query={query} />
-          <section className="specialty-grid">
+
+          <section className="three-col">
             <article className="panel">
-              <div className="panel-heading"><div><span className="eyebrow">PRODUCT WATCHLIST</span><h3>产品预警榜</h3></div><Link href={`/products?period=${mode}&batch=${result.source.batchId || ""}`}>全部产品</Link></div>
-              <div className="watch-list">
-                {result.productRows.slice(0, 7).map((row, index) => (
-                  <Link href={row.detailHref!} key={row.key} className="watch-row">
-                    <span className="rank">{String(index + 1).padStart(2, "0")}</span>
-                    <span className="watch-copy"><strong>{row.label}</strong><small>{row.secondary}</small></span>
-                    <span className="watch-metric"><strong>{formatCount(row.latestIssues)}</strong><small>{formatPercent(row.latestRate)}</small></span>
-                  </Link>
-                ))}
-              </div>
+              <div className="panel-heading"><div><span className="eyebrow">CATEGORIES</span><h3>五大问题分类</h3><p>{result.data.period.current.label} 经营异常问题分布</p></div></div>
+              <CategoryBreakdown categories={result.data.categories} week={result.data.period.current.start} />
             </article>
             <article className="panel">
-              <div className="panel-heading"><div><span className="eyebrow">WAREHOUSE WATCH</span><h3>仓库风险</h3></div><Link href={`/warehouses?period=${mode}&batch=${result.source.batchId || ""}`}>全部仓库</Link></div>
-              <div className="warehouse-list">
-                {result.warehouseRows.slice(0, 6).map((row) => (
-                  <Link className="warehouse-row" href={`/detail?warehouse_code=${encodeURIComponent(row.warehouseCode)}&period=${mode}&batch=${result?.source.batchId || ""}`} key={row.warehouseCode}>
-                    <span><strong>{row.warehouseName || row.warehouseCode}</strong><small>{row.warehouseName ? row.warehouseCode : "未完成仓库映射"}</small></span>
-                    <span><strong>{formatCount(row.latestIssues)}</strong><small>{formatPercent(row.latestRate)}</small></span>
-                    <i className={row.alertLevel} />
-                  </Link>
-                ))}
-              </div>
+              <div className="panel-heading"><div><span className="eyebrow">PRODUCT WATCHLIST</span><h3>产品预警榜</h3></div><Link href="/products">产品周报</Link></div>
+              <ProductWatchlist rows={result.data.productWatchlist} week={result.data.period.current.start} />
+            </article>
+            <article className="panel">
+              <div className="panel-heading"><div><span className="eyebrow">WAREHOUSE RISK</span><h3>仓库风险榜</h3></div><Link href="/warehouses">仓库分析</Link></div>
+              <WarehouseRiskList rows={result.data.warehouseRisk} week={result.data.period.current.start} />
             </article>
           </section>
         </>
-      ) : <DataError error={error} />}
+      )}
     </>
   )
 }
