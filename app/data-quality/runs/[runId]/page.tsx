@@ -130,8 +130,14 @@ function RunDetail({ run }: { run: SyncRunDetail }) {
       <div className="stack">
         <article className="panel">
           <div className="panel-heading"><div><span className="eyebrow">RECOVERY</span><h3><RotateCcw aria-hidden="true" size={16} style={{ verticalAlign: -2, marginRight: 6 }} />恢复建议</h3></div></div>
+          {run.status === "unknown" ? (
+            <div className="missing-list" role="alert" style={{ marginBottom: 12 }}>
+              <strong>需要人工核对</strong>
+              <span>该运行的副作用未知：无法确认写入是否完成或是否重复。请先按下方证据核对写入范围，再决定是否重跑；页面不提供直接重试入口。</span>
+            </div>
+          ) : null}
           <p className={run.retrySafe === false ? "advice unsafe" : "advice"}>
-            <strong>{run.retrySafe === null ? "重跑安全性未评估" : run.retrySafe ? "可以安全重跑" : "不要直接重跑"}</strong>
+            <strong>{run.retrySafe === null ? "重跑安全性未评估，需要人工核对" : run.retrySafe ? "可以安全重跑" : "不要直接重跑"}</strong>
             {run.recoveryAdvice}
           </p>
           <p className="muted" style={{ marginTop: 10 }}>重跑与补数由后端任务执行；页面只展示结论与证据，不发起写入。</p>
