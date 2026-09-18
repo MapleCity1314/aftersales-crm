@@ -9,7 +9,8 @@ import { issuesHref } from "@/src/api/query"
 import { formatDateTime } from "@/src/components/format"
 import { Badge } from "@/src/components/status-badge"
 
-import { idleRuleActionState, updateExclusionRule } from "./actions"
+import { idleRuleActionState } from "./action-state"
+import { updateExclusionRule } from "./actions"
 
 export function RuleCard({ rule, canEdit, week }: { rule: ExclusionRule; canEdit: boolean; week?: string }) {
   const [state, action, pending] = useActionState(updateExclusionRule, idleRuleActionState)

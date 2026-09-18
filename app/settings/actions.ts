@@ -6,13 +6,7 @@ import { isApiError } from "@/src/api/client"
 import type { RuleUpdateInput } from "@/src/api/contracts"
 import { getApi } from "@/src/api/server"
 
-export interface RuleActionState {
-  status: "idle" | "success" | "error"
-  message: string | null
-  ruleId: string | null
-}
-
-export const idleRuleActionState: RuleActionState = { status: "idle", message: null, ruleId: null }
+import type { RuleActionState } from "./action-state"
 
 /**
  * 规则修改只经过 ApiClient 边界；写入、审计与重新发布由后端负责。
