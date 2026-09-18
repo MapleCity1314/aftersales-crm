@@ -10,6 +10,7 @@ import { KpiCard } from "@/src/components/metric-card"
 import { CategoryBreakdown, ProductWatchlist, TrendTable, WarehouseRiskList } from "@/src/components/overview-panels"
 import { RouteLoading } from "@/src/components/route-loading"
 import { DataNotice, ErrorState } from "@/src/components/state-panels"
+import { TrendChart } from "@/src/components/trend-chart"
 
 type Props = { searchParams: Promise<SearchParams> }
 
@@ -78,6 +79,7 @@ async function OverviewContent({ searchParams }: Props) {
               <div><span className="eyebrow">FIVE-WEEK TREND</span><h3>最近五个完整周</h3><p>周环比为售后率百分点差；分母缺失时显示 “—” 并注明原因。</p></div>
               <Link href={issuesHref({})}>进入问题工作台</Link>
             </div>
+            <TrendChart trend={result.data.trend} cutoverStart={result.data.trend.find((point) => point.reconciliation)?.week.start ?? null} />
             <TrendTable trend={result.data.trend} />
           </article>
 

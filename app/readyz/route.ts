@@ -1,100 +1,32 @@
-import { addDays, differenceInCalendarDays, parseISO, startOfDay, subDays } from "date-fns"
+import { getProbeApi, resolveApiMode } from "@/src/api/server"
 
-import { checkDatabase } from "@/src/db/mysql"
-import { windowsFor } from "@/src/modules/analytics/date-windows"
-import { isDevFixtureMode } from "@/src/modules/analytics/dev-mode"
-import { DataUnavailableError } from "@/src/modules/analytics/errors"
-import { sourceFreshness } from "@/src/modules/analytics/freshness"
-import { reportBatch, latestCompleteOrderDay, latestProductOrderDay, sourceSnapshot, requireCalculatedPeriods } from "@/src/modules/analytics/repository"
-
+/**
+ * 前端进程的就绪检查：只问数据入口（Hono /readyz 或样例适配器）是否有已发布且通过必需检查的数据集。
+ * 不直接连接任何数据库或外部来源。
+ */
 export async function GET() {
-  if (isDevFixtureMode()) {
-    return Response.json(
-      { ok: true, service: "aftersales-dashboard", source: { sourceType: "fixture", state: "fresh" } },
-      { headers: { "cache-control": "no-store" } },
-    )
-  }
+  const headers = { "cache-control": "no-store" }
   try {
-    const batch = await reportBatch()
-    if (batch.verification === "candidate") {
-      return Response.json({ ok: false, service: "aftersales-dashboard", batchId: batch.id,
-        analytics: { state: "candidate", code: "report_not_verified" } },
-      { status: 503, headers: { "cache-control": "no-store" } })
-    }
-    if (batch.verificationKind !== "full") {
-      const [databaseLatencyMs, source] = await Promise.all([checkDatabase(), sourceSnapshot(batch)])
-      const freshness = sourceFreshness(source.syncedAt)
-      const issueReady = batch.issueCoverageApproved === true && batch.salesCoverageApproved === false && freshness.state === "fresh"
-      return Response.json(
-        {
-          ok: issueReady,
-          service: "aftersales-dashboard",
-          databaseLatencyMs,
-          source: { syncedAt: source.syncedAt, coverageStart: source.coverageStart, coverageEnd: source.coverageEnd, batchId: source.batchId, reconciliationStatus: source.reconciliationStatus, ...sourceFreshness(source.syncedAt) },
-          orders: { through: null },
-          productOrders: { through: null, state: "unavailable" },
-          analytics: { state: issueReady ? "issue_facts_ready" : "partial", code: "denominators_pending_verification" },
-        },
-        { status: issueReady ? 200 : 503, headers: { "cache-control": "no-store" } },
-      )
-    }
-    const [databaseLatencyMs, source, orderWatermark, productOrderWatermark] = await Promise.all([
-      checkDatabase(),
-      sourceSnapshot(batch),
-      latestCompleteOrderDay(batch),
-      latestProductOrderDay(batch),
-    ])
-    const freshness = sourceFreshness(source.syncedAt)
-    const orderLagDays = Math.max(
-      0,
-      differenceInCalendarDays(subDays(startOfDay(new Date()), 1), parseISO(orderWatermark.statDate)),
-    )
-    const maxOrderLagDays = Number(process.env.AFTERSALES_MAX_ORDER_LAG_DAYS || 2)
-    const productOrderLagDays = productOrderWatermark ? Math.max(
-      0,
-      differenceInCalendarDays(subDays(startOfDay(new Date()), 1), parseISO(productOrderWatermark.statDate)),
-    ) : null
-    const progressToday = addDays(parseISO(orderWatermark.statDate), 1)
-    try {
-      // A verified source can contain a documented unresolved attribution.
-      // Its ratio remains null; that differs from a missing/failed source or
-      // an uncalculated period, both of which prevent readiness.
-      await Promise.all([
-        requireCalculatedPeriods(windowsFor("closed"), batch),
-        requireCalculatedPeriods(windowsFor("progress", progressToday), batch),
-      ])
-    } catch (error) {
-      if (error instanceof DataUnavailableError) {
-        return Response.json(
-          {
-            ok: false,
-            service: "aftersales-dashboard",
-            databaseLatencyMs,
-            source: { syncedAt: source.syncedAt, coverageStart: source.coverageStart, coverageEnd: source.coverageEnd, batchId: source.batchId, reconciliationStatus: source.reconciliationStatus, ...freshness },
-            orders: { through: orderWatermark.statDate, lagDays: orderLagDays, maxLagDays: maxOrderLagDays },
-            analytics: { state: "incomplete", code: error.code },
-          },
-          { status: 503, headers: { "cache-control": "no-store" } },
-        )
-      }
-      throw error
-    }
-
-    const productOrdersReady = productOrderLagDays !== null && productOrderLagDays <= maxOrderLagDays
-    const ok = freshness.state === "fresh" && orderLagDays <= maxOrderLagDays && productOrdersReady
+    const mode = resolveApiMode()
+    const readiness = await getProbeApi().readiness()
     return Response.json(
       {
-        ok,
-        service: "aftersales-dashboard",
-        databaseLatencyMs,
-        source: { syncedAt: source.syncedAt, coverageStart: source.coverageStart, coverageEnd: source.coverageEnd, batchId: source.batchId, reconciliationStatus: source.reconciliationStatus, ...freshness },
-        orders: { through: orderWatermark.statDate, lagDays: orderLagDays, maxLagDays: maxOrderLagDays },
-        productOrders: { through: productOrderWatermark?.statDate || null, lagDays: productOrderLagDays, maxLagDays: maxOrderLagDays, state: productOrdersReady ? "ready" : "stale" },
-        analytics: { state: orderLagDays > maxOrderLagDays ? "stale" : productOrdersReady ? "ready" : "partial" },
+        ok: readiness.ok,
+        service: "aftersales-frontend",
+        apiMode: mode,
+        database: readiness.database,
+        freshness: readiness.freshness,
+        requiredChecksPassed: readiness.requiredChecksPassed,
+        dataset: readiness.dataset
+          ? { version: readiness.dataset.version, state: readiness.dataset.state, publishedAt: readiness.dataset.publishedAt, coverageStart: readiness.dataset.coverageStart, coverageEnd: readiness.dataset.coverageEnd }
+          : null,
       },
-      { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } },
+      { status: readiness.ok ? 200 : 503, headers },
     )
-  } catch {
-    return Response.json({ ok: false, service: "aftersales-dashboard", database: "unavailable" }, { status: 503, headers: { "cache-control": "no-store" } })
+  } catch (error) {
+    return Response.json(
+      { ok: false, service: "aftersales-frontend", error: { code: "UPSTREAM_UNAVAILABLE", message: error instanceof Error ? error.message : "unknown" } },
+      { status: 503, headers },
+    )
   }
 }

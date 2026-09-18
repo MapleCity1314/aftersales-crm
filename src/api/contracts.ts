@@ -322,6 +322,7 @@ export interface WarehouseRow {
 export interface WarehouseData {
   week: WeekWindow
   previousWeek: WeekWindow
+  selectableWeeks: WeekWindow[]
   rows: WarehouseRow[]
   pendingMappings: number
   totalWarehouseIssues: number

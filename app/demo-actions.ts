@@ -6,8 +6,9 @@ import { revalidatePath } from "next/cache"
 import { MOCK_SCENARIO_COOKIE, resolveApiMode } from "@/src/api/server"
 import { DEV_ROLE_COOKIE } from "@/src/auth/constants"
 
+/* 演示控件只在受控样例数据模式下生效；接入 Hono 后自动消失。 */
 function assertDemoAllowed() {
-  if (process.env.NODE_ENV === "production" || resolveApiMode() !== "mock") {
+  if (resolveApiMode() !== "mock") {
     throw new Error("DEMO_CONTROLS_DISABLED")
   }
 }

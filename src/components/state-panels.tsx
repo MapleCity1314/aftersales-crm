@@ -7,6 +7,11 @@ import type { ApiMeta } from "@/src/api/contracts"
 
 import { formatDateTime } from "./format"
 
+/** 滞后小时数以 API 的 generatedAt 为基准，避免渲染期间读取系统时钟。 */
+function lagHoursBetween(publishedAt: string, generatedAt: string) {
+  return Math.max(0, Math.floor((new Date(generatedAt).getTime() - new Date(publishedAt).getTime()) / 3_600_000))
+}
+
 /** 页面级数据说明：滞后、部分成功、使用上一版等。 */
 export function DataNotice({ meta, publishedAt, lagReason }: { meta: ApiMeta; publishedAt?: string | null; lagReason?: string | null }) {
   if (meta.dataState === "ready" && !meta.notice) return null
@@ -25,7 +30,7 @@ export function DataNotice({ meta, publishedAt, lagReason }: { meta: ApiMeta; pu
       {meta.dataState === "stale" ? <Clock aria-hidden="true" size={16} /> : <AlertTriangle aria-hidden="true" size={16} />}
       <span>
         <strong>{title}</strong>
-        {meta.dataState === "stale" && publishedAt ? <span>最后成功发布 {formatDateTime(publishedAt)}；已滞后 {Math.max(0, Math.floor((Date.now() - new Date(publishedAt).getTime()) / 3_600_000))} 小时。{lagReason ? `原因：${lagReason}` : null}</span> : null}
+        {meta.dataState === "stale" && publishedAt ? <span>最后成功发布 {formatDateTime(publishedAt)}；已滞后 {lagHoursBetween(publishedAt, meta.generatedAt)} 小时。{lagReason ? `原因：${lagReason}` : null}</span> : null}
         {meta.dataState === "partial" && lagReason ? <span>{lagReason}。受影响指标显示为 “—”，不使用猜测值。</span> : null}
         {meta.notice ? <span>{meta.notice}</span> : null}
       </span>

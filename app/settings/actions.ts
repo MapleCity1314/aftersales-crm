@@ -1,47 +1,43 @@
 "use server"
 
-import { updateTag } from "next/cache"
+import { revalidatePath } from "next/cache"
 
-import { currentUser } from "@/src/auth/current-user"
-import { isDevFixtureMode } from "@/src/modules/analytics/dev-mode"
-import { defaultExclusionRules } from "@/src/modules/problem-rules/defaults"
-import { saveExclusionRule } from "@/src/modules/problem-rules/repository"
-import { exclusionRuleKey, type ExclusionRule } from "@/src/modules/problem-rules/types"
+import { isApiError } from "@/src/api/client"
+import type { RuleUpdateInput } from "@/src/api/contracts"
+import { getApi } from "@/src/api/server"
 
 export interface RuleActionState {
   status: "idle" | "success" | "error"
-  message: string
+  message: string | null
+  ruleId: string | null
 }
 
-const allowedRuleKeys = new Set(defaultExclusionRules.map((rule) => exclusionRuleKey(rule.p1, rule.p2, rule.p3)))
+export const idleRuleActionState: RuleActionState = { status: "idle", message: null, ruleId: null }
 
-function value(formData: FormData, key: string) {
-  return String(formData.get(key) || "").trim()
-}
+/**
+ * 规则修改只经过 ApiClient 边界；写入、审计与重新发布由后端负责。
+ */
+export async function updateExclusionRule(_previous: RuleActionState, formData: FormData): Promise<RuleActionState> {
+  const ruleId = String(formData.get("ruleId") ?? "")
+  const intent = String(formData.get("intent") ?? "note")
+  if (!ruleId) return { status: "error", message: "缺少规则 ID", ruleId: null }
 
-export async function updateExclusionRule(
-  _previousState: RuleActionState,
-  formData: FormData,
-): Promise<RuleActionState> {
-  const user = await currentUser()
-  if (user.role !== "admin") return { status: "error", message: "只有管理员可以修改可剔除规则" }
-  if (isDevFixtureMode()) return { status: "error", message: "本地验收数据不会写入规则库" }
-
-  const rule = {
-    p1: value(formData, "p1"),
-    p2: value(formData, "p2"),
-    p3: value(formData, "p3"),
-    note: value(formData, "note"),
-    enabled: formData.has("is_enabled"),
-  } as ExclusionRule
-  if (!allowedRuleKeys.has(exclusionRuleKey(rule.p1, rule.p2, rule.p3))) {
-    return { status: "error", message: "该规则不在已确认的可剔除清单中" }
+  const note = String(formData.get("note") ?? "").trim()
+  if (intent === "note" && note.length > 200) {
+    return { status: "error", message: "说明不能超过 200 字", ruleId }
   }
+  const input: RuleUpdateInput = intent === "enable" ? { enabled: true } : intent === "disable" ? { enabled: false } : { note }
+
   try {
-    await saveExclusionRule(rule, user.id)
-    updateTag("aftersales-dashboard")
-    return { status: "success", message: "可剔除规则已保存，统计口径已刷新" }
-  } catch {
-    return { status: "error", message: "规则保存失败，请稍后重试" }
+    const api = await getApi()
+    const result = await api.updateRule(ruleId, input)
+    revalidatePath("/settings")
+    revalidatePath("/", "layout")
+    return { status: "success", message: result.meta.notice ?? "已保存，等待数据集重新发布", ruleId }
+  } catch (error) {
+    if (isApiError(error)) {
+      return { status: "error", message: error.code === "FORBIDDEN" ? "当前角色无权修改规则（需要管理员）" : `${error.message}（${error.code}）`, ruleId }
+    }
+    return { status: "error", message: error instanceof Error ? error.message : "保存失败", ruleId }
   }
 }

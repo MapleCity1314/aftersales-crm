@@ -57,33 +57,41 @@ async function SidebarMode() {
   )
 }
 
-async function TopbarStatus() {
-  let content: ReactNode
+async function loadTopbarStatus() {
   try {
     const api = await getApi()
     const { data, meta } = await api.dataStatus()
-    content = (
-      <>
-        <Link className="status-chip" href="/data-quality" title="当前发布的数据集版本">
-          <small>数据集</small>
-          <strong>{meta.datasetVersion ?? "未发布"}</strong>
-        </Link>
-        <span className="status-chip">
-          <small>最后更新</small>
-          <strong>{formatShortDateTime(data.dataset.publishedAt)}</strong>
-        </span>
-        <DataStateBadge state={meta.dataState} />
-      </>
-    )
+    return { ok: true as const, version: meta.datasetVersion, publishedAt: data.dataset.publishedAt, state: meta.dataState }
   } catch (error) {
-    content = (
-      <span className="status-chip">
-        <small>数据状态</small>
-        <strong>{isApiError(error) ? `不可用（${error.code}）` : "不可用"}</strong>
-      </span>
+    return { ok: false as const, code: isApiError(error) ? error.code : null }
+  }
+}
+
+async function TopbarStatus() {
+  const status = await loadTopbarStatus()
+  if (!status.ok) {
+    return (
+      <div className="topbar-status">
+        <span className="status-chip">
+          <small>数据状态</small>
+          <strong>{status.code ? `不可用（${status.code}）` : "不可用"}</strong>
+        </span>
+      </div>
     )
   }
-  return <div className="topbar-status">{content}</div>
+  return (
+    <div className="topbar-status">
+      <Link className="status-chip" href="/data-quality" title="当前发布的数据集版本">
+        <small>数据集</small>
+        <strong>{status.version ?? "未发布"}</strong>
+      </Link>
+      <span className="status-chip">
+        <small>最后更新</small>
+        <strong>{formatShortDateTime(status.publishedAt)}</strong>
+      </span>
+      <DataStateBadge state={status.state} />
+    </div>
+  )
 }
 
 async function CurrentUserViewer() {
@@ -92,7 +100,7 @@ async function CurrentUserViewer() {
   const scenario = mode === "mock" ? ((await cookies()).get(MOCK_SCENARIO_COOKIE)?.value ?? "default") : null
   return (
     <div className="viewer-block">
-      {mode === "mock" && process.env.NODE_ENV !== "production" ? <DemoControls role={user.role} scenario={scenario ?? "default"} scenarios={mockScenarios} /> : null}
+      {mode === "mock" ? <DemoControls role={user.role} scenario={scenario ?? "default"} scenarios={mockScenarios} /> : null}
       <div className="viewer">
         <span className="avatar">{user.displayName.slice(0, 1)}</span>
         <span><strong>{user.displayName}</strong><small>{user.role === "admin" ? "管理员 · admin" : "员工 · viewer"}</small></span>

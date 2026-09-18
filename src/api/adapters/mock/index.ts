@@ -9,7 +9,6 @@ import type {
   DataStatusData,
   DatasetSummary,
   IssueDetail,
-  IssueFilters,
   IssueListData,
   IssueListItem,
   KpiMetric,
@@ -110,7 +109,7 @@ export function createMockApiClient(context: ApiClientContext): ApiClient {
     return base
   }
 
-  function dataState(w: MockWorld): DataState {
+  function dataState(): DataState {
     if (scenario === "unpublished") return "unpublished"
     if (scenario === "stale") return "stale"
     if (scenario === "partial") return "partial"
@@ -122,7 +121,7 @@ export function createMockApiClient(context: ApiClientContext): ApiClient {
       requestId: requestId(),
       datasetVersion: scenario === "unpublished" ? null : w.publishedDataset.version,
       generatedAt: new Date().toISOString(),
-      dataState: dataState(w),
+      dataState: dataState(),
       notice: notice ?? (scenario === "default" ? `最新一次发布尝试 ${w.latestAttempt.version} 未通过必需质量检查，页面仍使用 ${w.publishedDataset.version}` : null),
     }
   }
@@ -207,7 +206,7 @@ export function createMockApiClient(context: ApiClientContext): ApiClient {
         ok: scenario === "default",
         database: scenario === "error" ? "unavailable" : "ok",
         dataset: scenario === "unpublished" ? null : w.publishedDataset,
-        freshness: dataState(w),
+        freshness: dataState(),
         requiredChecksPassed: w.checks.filter((check) => check.required).every((check) => check.status === "passed"),
       }
     },
@@ -480,6 +479,7 @@ export function createMockApiClient(context: ApiClientContext): ApiClient {
       const data: WarehouseData = {
         week: selected,
         previousWeek: previous,
+        selectableWeeks: w.trendWeeks,
         rows,
         pendingMappings: warehouses.filter((warehouse) => warehouse.matchStatus === "pending").length,
         totalWarehouseIssues: cur.length,

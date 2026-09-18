@@ -1,6 +1,6 @@
 import { addDays, differenceInCalendarDays, format, parseISO, startOfWeek, subHours, subMinutes } from "date-fns"
 
-import { closedWeekWindows, shanghaiToday } from "@/src/modules/analytics/date-windows"
+import { closedWeekWindows, shanghaiToday } from "../../week-windows"
 import type {
   ClassificationStatus,
   DatasetSummary,
